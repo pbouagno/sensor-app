@@ -1,1 +1,54 @@
-# sensor-app
+# Telematics: live phone sensors
+
+Live app: **https://pbouagno.github.io/sensor-app/**
+
+Telematics is a web app that you can add to your phone's Home Screen. It shows every sensor that your phone's browser lets a web page read. Each sensor gets live charts, min, max and mean statistics, and a recorder that saves the raw readings so you can export them as CSV or JSON.
+
+It's plain HTML, CSS and JavaScript. There's no build step and no libraries. The look follows your default SpaceX style guide: black background, uppercase Barlow headings, Roboto Mono numbers and thin ghost buttons. It doesn't use any SpaceX names or logos.
+
+Asset paths are relative (`./`, `icons/`, `fonts/`, `js/`) so the app works when GitHub Pages serves it from the `/sensor-app/` subpath. `.nojekyll` keeps Pages from running Jekyll on these files.
+
+## Try it on your computer
+```bash
+python3 -m http.server 5175      # from this folder, then open http://localhost:5175
+```
+A laptop has almost no sensors, so most tiles will say "Not available". That's expected.
+
+## Try it on your phone
+Phones only allow sensors on a secure page: **https://** or localhost. Open **https://pbouagno.github.io/sensor-app/**. Then:
+1. Tap **START SENSORS**. If you want the sound level too, tick "Include microphone" first.
+2. On iPhone, say **Allow** to Motion & Orientation and to Location.
+3. To install it, tap Share → **Add to Home Screen**. On Android, use the ⋮ menu → **Install app**.
+
+## Screens
+- **Sensors:** one tile per sensor with every axis, its unit, the update rate in Hz, the last timestamp and a live chart. Sensors this phone or browser can't provide are listed at the bottom under "Not available on this device / browser", with the reason.
+- **Detail:** tap a tile to open it. You get a big chart, axis toggles, a 5/10/30/60 s time window and a Pause button. There's a Now/Min/Max/Mean table, plus a compass dial, 3D tilt phone, GPS trace, waveform or gauge where it fits.
+- **Record:** start and stop recording. Every reading from every live sensor goes into the browser's database (IndexedDB), saved every 2 seconds. The screen stays on while you record if the browser supports that.
+- **Sessions:** your saved recordings. You can export each one as CSV or JSON, or delete it.
+- **Device:** browser and device info, a vibration test and settings (recording rate, chart window, delete all).
+
+## Files
+| File | What it does |
+|---|---|
+| `index.html` | The page: top bar, the area each screen is drawn into, and the tab bar |
+| `styles.css` | All the styling. The `:root` block is copied from the style guide |
+| `js/util.js` | Helpers: the rolling buffer, the min/max/mean statistics and number formatting |
+| `js/sensors.js` | Reads every sensor. It checks that each one exists before using it |
+| `js/charts.js` | Draws the charts and pictures on a `<canvas>` by hand |
+| `js/recorder.js` | Records readings to IndexedDB and exports CSV or JSON |
+| `js/db.js` | A small wrapper around IndexedDB |
+| `js/app.js` | The screens, the tabs and the update loop |
+| `sw.js` | The service worker that makes the app work offline. **Change `CACHE_NAME` (v1 → v2) whenever you edit files**, or phones keep the old copy |
+| `manifest.json` | The app name, icons and colors used when it's installed |
+| `fonts/`, `icons/`, `screenshots/` | Self-hosted fonts, home-screen icons, and reference screenshots |
+| `make-qr.js` | Writes `screenshots/qr.png` for a URL (`node make-qr.js <url>`) |
+| `.nojekyll` | Tells GitHub Pages to publish the files as-is |
+| `.github/workflows/pages.yml` | Publishes this folder to GitHub Pages on each push to `main` |
+
+## The CSV format
+The CSV has one line per value: `time_iso, elapsed_s, sensor, field, value, unit`. This "long" layout is easy to filter, or to turn into a pivot table in Excel or Google Sheets.
+
+## Known limits
+- Phones pause web pages when the screen locks or you switch apps, so readings and recording stop until you come back.
+- The microphone level is dBFS, measured relative to the mic's maximum. It isn't calibrated decibels.
+- Each browser reports motion axes in its own frame. Check the numbers against a known position, such as the phone lying flat, before you trust them.
