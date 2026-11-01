@@ -1,10 +1,12 @@
 /*
   db.js — saving recordings in the browser's built-in database (IndexedDB).
 
-  Two "tables" (object stores):
+  Three "tables" (object stores):
   - sessions: one row per recording (start/end time, sample counts, device info)
   - chunks:   the raw readings, saved in small batches every couple of seconds
               so a long recording never has to sit in memory all at once.
+  - trips:    one row per scored trip, including its 1 Hz samples and summary.
+              Version 2 of the database adds this table.
 */
 (function () {
   "use strict";
@@ -14,12 +16,15 @@
     if (dbPromise) return dbPromise;
     dbPromise = new Promise((resolve, reject) => {
       if (!("indexedDB" in window)) return reject(new Error("IndexedDB is not available in this browser"));
-      const req = indexedDB.open("telematics", 1);
+      const req = indexedDB.open("telematics", 2);
       req.onupgradeneeded = () => {
         const db = req.result;
-        db.createObjectStore("sessions", { keyPath: "id" });
-        const chunks = db.createObjectStore("chunks", { autoIncrement: true });
-        chunks.createIndex("session", "session");
+        if (!db.objectStoreNames.contains("sessions")) db.createObjectStore("sessions", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("chunks")) {
+          const chunks = db.createObjectStore("chunks", { autoIncrement: true });
+          chunks.createIndex("session", "session");
+        }
+        if (!db.objectStoreNames.contains("trips")) db.createObjectStore("trips", { keyPath: "id" });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -58,9 +63,14 @@
         if (c) { t.objectStore("chunks").delete(c.primaryKey); c.continue(); }
       };
     }),
-    clearAll: () => tx(["sessions", "chunks"], "readwrite", (t) => {
-      t.objectStore("sessions").clear(); t.objectStore("chunks").clear();
+    clearAll: () => tx(["sessions", "chunks", "trips"], "readwrite", (t) => {
+      t.objectStore("sessions").clear(); t.objectStore("chunks").clear(); t.objectStore("trips").clear();
     }),
+    saveTrip: (trip) => tx("trips", "readwrite", (t) => { t.objectStore("trips").put(trip); }),
+    listTrips: () => tx("trips", "readonly", (t) => reqP(t.objectStore("trips").getAll()))
+      .then((list) => list.sort((a, b) => b.start - a.start)),
+    getTrip: (id) => tx("trips", "readonly", (t) => reqP(t.objectStore("trips").get(id))),
+    deleteTrip: (id) => tx("trips", "readwrite", (t) => { t.objectStore("trips").delete(id); }),
   };
   window.DB = DB;
 })();

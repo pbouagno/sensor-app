@@ -12,7 +12,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#000000" />
   <meta name="color-scheme" content="dark" />
-  <meta name="description" content="See every sensor your phone's browser can read, live, with charts and recording." />
+  <meta name="description" content="See every sensor your phone's browser can read, live, with charts, recording and trip scores." />
 
   <!-- PWA ("installable web app") settings — see README -->
   <link rel="manifest" href="manifest.json" />
@@ -38,6 +38,7 @@
     <span class="grow"></span>
     <!-- Shows "REC 00:12" while recording (filled in by app.js) -->
     <a href="#/record" class="status-tag rec-tag" id="rec-tag" hidden>REC</a>
+    <a href="#/trip" class="status-tag rec-tag" id="trip-tag" hidden>TRIP</a>
     <span class="status-tag" id="live-tag">Idle</span>
   </header>
 
@@ -49,6 +50,7 @@
     <a href="#/sensors" data-tab="sensors"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h3l3-7 4 14 3-7h5"/></svg>Sensors</a>
     <a href="#/record" data-tab="record"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></svg>Record</a>
     <a href="#/sessions" data-tab="sessions"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Sessions</a>
+    <a href="#/trip" data-tab="trip"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 21V3"/><path d="M6 4h11l-2.2 3.2L17 10.5H6"/></svg>Trip</a>
     <a href="#/device" data-tab="device"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><rect x="6.5" y="2.5" width="11" height="19" rx="1.5"/><path d="M10.5 18.5h3"/></svg>Device</a>
   </nav>
 
@@ -58,6 +60,8 @@
   <script src="js/sensors.js"></script>
   <script src="js/charts.js"></script>
   <script src="js/recorder.js"></script>
+  <script src="js/trip-math.js"></script>
+  <script src="js/trip.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
