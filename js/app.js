@@ -6,6 +6,9 @@
     #/detail/<id>    one sensor: big chart, min/max/mean, pause, time window
     #/record         start / stop a recording
     #/sessions       saved recordings, export CSV / JSON, delete
+    #/trip           start / stop a scored trip
+    #/trips          saved trips
+    #/trips/<id>     one trip: summary, route, speed chart
     #/device         device info, vibration test, settings
 */
 (function () {
@@ -15,7 +18,7 @@
   const app = $("#app");
 
   // ---------- Settings (saved in localStorage) ----------
-  const DEFAULTS = { recordHz: 0, windowS: 10, mic: false };
+  const DEFAULTS = { recordHz: 0, windowS: 10, mic: false, units: "kmh", harshG: 0.3, turnDps: 45 };
   let settings;
   try { settings = { ...DEFAULTS, ...JSON.parse(localStorage.getItem("telematics.settings") || "{}") }; }
   catch (e) { settings = { ...DEFAULTS }; }
@@ -39,12 +42,16 @@
   function route() {
     const parts = (location.hash || "#/sensors").slice(2).split("/");
     const name = parts[0] || "sensors";
+    const tab = name === "detail" ? "sensors" : name === "trips" ? "trip" : name;
     document.querySelectorAll(".tabbar a").forEach((a) => {
-      const on = a.dataset.tab === (name === "detail" ? "sensors" : name);
+      const on = a.dataset.tab === tab;
       a.classList.toggle("active", on);
       if (on) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
     });
-    const views = { sensors: viewSensors, detail: () => viewDetail(parts[1]), record: viewRecord, sessions: viewSessions, device: viewDevice };
+    const views = {
+      sensors: viewSensors, detail: () => viewDetail(parts[1]), record: viewRecord, sessions: viewSessions,
+      trip: viewTrip, trips: () => (parts[1] ? viewTripDetail(parts[1]) : viewTripHistory()), device: viewDevice,
+    };
     view = (views[name] || viewSensors)();
     window.scrollTo(0, 0);
   }
@@ -405,17 +412,270 @@
       <label class="field">Default chart window
         <select id="set-win">${[5, 10, 30, 60].map((w) => `<option value="${w}" ${settings.windowS === w ? "selected" : ""}>${w} seconds</option>`).join("")}</select>
       </label>
-      <div class="btn-row"><button class="btn btn-ghost" id="clear-btn">Delete all recordings</button></div>
+      <div class="btn-row"><button class="btn btn-ghost" id="clear-btn">Delete all recordings and trips</button></div>
       <h2 class="section-title">About</h2>
       <p class="small muted">Sensors only work on a secure (https://) page. iPhone asks for motion access the first time you tap START SENSORS; if you said no, fully close Safari and try again. Location needs Location Services turned on for Safari.</p>`;
     $("#vib-btn").onclick = () => navigator.vibrate && navigator.vibrate([120, 80, 120, 80, 120]);
     $("#set-hz").onchange = (e) => { settings.recordHz = +e.target.value; saveSettings(); toast("Saved"); };
     $("#set-win").onchange = (e) => { settings.windowS = +e.target.value; saveSettings(); toast("Saved"); };
     $("#clear-btn").onclick = async () => {
-      if (!confirm("Delete ALL saved recordings?")) return;
+      if (!confirm("Delete ALL saved recordings and trips?")) return;
       await DB.clearAll(); toast("All recordings deleted");
     };
     return { name: "device", draw() {}, text() {} };
+  }
+
+  // ---------- TRIP ----------
+  function speedText(mps, unit) {
+    const v = TripMath.formatSpeed(mps, unit);
+    return v === "—" ? "—" : v + " " + TripMath.speedLabel(unit);
+  }
+  function tripSummaryOf(t) {
+    if (!t) return null;
+    if (t.summary && t.summary.score != null) return t.summary;
+    return TripMath.summarize(t.samples || [], t.thresholds || Trip.thresholds());
+  }
+  function tripMeta(summary, unit) {
+    const rows = [
+      ["Duration", duration(summary.durationMs || 0)],
+      ["Distance", TripMath.formatDistance(summary.distanceM, unit)],
+      ["Max speed", speedText(summary.maxSpeed, unit)],
+      ["Average speed", speedText(summary.avgSpeed, unit)],
+      ["Elevation gain", TripMath.formatClimb(summary.elevationGainM, unit)],
+      ["Hard brakes", String(summary.hardBrakes || 0)],
+      ["Hard accelerations", String(summary.hardAccels || 0)],
+      ["Sharp turns", String(summary.sharpTurns || 0)],
+      ["Max g", summary.maxG == null ? "—" : Number(summary.maxG).toFixed(2)],
+    ];
+    return rows.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd class="mono">${esc(v)}</dd></div>`).join("");
+  }
+  function traceRing(samples) {
+    const t = [], v = [];
+    for (const s of samples || []) {
+      if (!isNum(s.lat) || !isNum(s.lon)) continue;
+      t.push(s.t);
+      v.push([s.lat, s.lon, isNum(s.accuracy) ? s.accuracy : null]);
+    }
+    return { t, v };
+  }
+  function drawTripCharts(samples, routeId, speedId) {
+    const route = document.getElementById(routeId);
+    const speed = document.getElementById(speedId);
+    const list = samples || [];
+    if (route) Charts.trace(route, traceRing(list));
+    if (!speed) return;
+    const ring = new Util.Ring(Math.max(16, list.length + 4));
+    for (const s of list) ring.push(s.t, [TripMath.speedTo(s.speed, settings.units)]);
+    const stream = { def: { chart: [0], wrap: [] }, ring };
+    const span = list.length >= 2 ? Math.max(1000, list[list.length - 1].t - list[0].t) : 1000;
+    const now = list.length ? list[list.length - 1].t : Date.now();
+    Charts.lines(speed, stream, { windowMs: span, now, axes: [0] });
+  }
+  function fillTripReadout(summary, trip) {
+    const unit = settings.units === "mph" ? "mph" : "kmh";
+    const set = (id, text) => { const el = document.getElementById(id); if (el && el.textContent !== text) el.textContent = text; };
+    set("trip-speed", summary ? TripMath.formatSpeed(summary.currentSpeed, unit) : "—");
+    set("trip-speed-label", "Speed " + TripMath.speedLabel(unit));
+    set("trip-elapsed", trip ? duration((trip.end || Date.now()) - trip.start) : "0:00");
+    set("trip-dist", summary ? TripMath.formatDistance(summary.distanceM, unit) : "—");
+    set("trip-score", summary && summary.score != null ? String(summary.score) : "—");
+    const why = document.getElementById("trip-why");
+    if (why) why.textContent = summary ? summary.explanation : "Start a trip to score it.";
+    const meta = document.getElementById("trip-meta");
+    if (meta && summary) meta.innerHTML = tripMeta(summary, unit);
+    document.querySelectorAll("[data-unit]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.unit === unit)));
+  }
+  function viewTrip() {
+    const active = Trip.active;
+    const shown = active || Trip.last;
+    const unit = settings.units === "mph" ? "mph" : "kmh";
+    app.innerHTML = `
+      <h1 class="page-title">Trip</h1>
+      <p class="subtitle">GPS and motion, about once a second, scored when you stop.</p>
+      <section class="card">
+        <div class="big-stats">
+          <div><div class="stat-num mono" id="trip-speed">—</div><div class="stat-label" id="trip-speed-label">Speed</div></div>
+          <div><div class="stat-num mono" id="trip-elapsed">${active ? duration(Date.now() - active.start) : "0:00"}</div><div class="stat-label">Elapsed</div></div>
+          <div><div class="stat-num mono" id="trip-dist">—</div><div class="stat-label">Distance</div></div>
+        </div>
+        <button class="btn btn-block ${active ? "btn-stop" : "btn-primary"}" id="trip-btn">${active ? "Stop trip" : "Start trip"}</button>
+        <p class="small muted" id="trip-note">${"wakeLock" in navigator ? "The screen stays on while the trip runs." : "Keep the screen on: this browser can't hold it awake."} Phones pause the page when the screen locks, so the log pauses too.</p>
+        <p class="warn" id="trip-gps" hidden></p>
+      </section>
+      <section class="card">
+        <h2 class="section-title">Summary</h2>
+        <div class="big-stats">
+          <div><div class="stat-num mono" id="trip-score">—</div><div class="stat-label">Score</div></div>
+        </div>
+        <p id="trip-why">Start a trip to score it.</p>
+        <dl class="meta" id="trip-meta"></dl>
+      </section>
+      <h2 class="section-title">Route</h2>
+      <canvas class="viz viz-big" id="trip-route" role="img" aria-label="Route trace"></canvas>
+      <h2 class="section-title">Speed</h2>
+      <canvas class="viz viz-chart" id="trip-speed-chart" role="img" aria-label="Speed over time"></canvas>
+      <h2 class="section-title">Trip settings</h2>
+      <div class="controls">
+        <span class="stat-label">Units</span>
+        <div class="seg" role="group" aria-label="Speed units">
+          <button type="button" class="seg-btn" data-unit="kmh" aria-pressed="${unit === "kmh"}">km/h</button>
+          <button type="button" class="seg-btn" data-unit="mph" aria-pressed="${unit === "mph"}">mph</button>
+        </div>
+      </div>
+      <label class="field">Harsh brake and acceleration (g)
+        <input id="set-harsh" type="number" min="0.05" max="1.5" step="0.05" inputmode="decimal" value="${esc(settings.harshG)}" />
+      </label>
+      <p class="small muted">Counts when longitudinal acceleration passes this. 0.3 g is about 2.9 m/s². The next second of a running trip uses the new value.</p>
+      <label class="field">Sharp turn (degrees per second)
+        <input id="set-turn" type="number" min="5" max="180" step="1" inputmode="numeric" value="${esc(settings.turnDps)}" />
+      </label>
+      <div class="btn-row"><a class="btn" href="#/trips">Trip history</a></div>`;
+    fillTripReadout(shown ? tripSummaryOf(shown) : null, shown);
+    app.querySelectorAll("[data-unit]").forEach((b) => (b.onclick = () => {
+      settings.units = b.dataset.unit;
+      saveSettings();
+      fillTripReadout(tripSummaryOf(Trip.active || Trip.last), Trip.active || Trip.last);
+      drawTripCharts((Trip.active || Trip.last || {}).samples, "trip-route", "trip-speed-chart");
+    }));
+    $("#set-harsh").onchange = (e) => {
+      const n = +e.target.value;
+      if (!isNum(n)) return;
+      settings.harshG = Math.min(1.5, Math.max(0.05, Math.round(n * 100) / 100));
+      e.target.value = String(settings.harshG);
+      saveSettings();
+      toast("Saved");
+    };
+    $("#set-turn").onchange = (e) => {
+      const n = +e.target.value;
+      if (!isNum(n)) return;
+      settings.turnDps = Math.min(180, Math.max(5, Math.round(n)));
+      e.target.value = String(settings.turnDps);
+      saveSettings();
+      toast("Saved");
+    };
+    $("#trip-btn").onclick = async () => {
+      try {
+        if (Trip.active) {
+          const done = await Trip.stop();
+          toast(done && done.summary && done.summary.score != null ? "Score " + done.summary.score : "Trip saved");
+          route();
+          return;
+        }
+        // Both calls start synchronously so iPhone can show the permission prompt
+        // and so the wake lock is requested inside this tap.
+        const sensorsP = Sensors.started ? null : Sensors.startAll({});
+        const tripP = Trip.start();
+        if (sensorsP) await sensorsP;
+        await tripP;
+        route();
+      } catch (e) { toast(e.message || "Couldn't save the trip"); }
+    };
+    return {
+      name: "trip",
+      draw() {
+        const t = Trip.active || Trip.last;
+        if (t) drawTripCharts(t.samples, "trip-route", "trip-speed-chart");
+      },
+      text() {
+        const t = Trip.active;
+        const shown = t || Trip.last;
+        fillTripReadout(shown ? tripSummaryOf(shown) : null, shown);
+        const note = document.getElementById("trip-gps");
+        if (!note) return;
+        let msg = "";
+        if (t) {
+          const geo = Sensors.streams.geo;
+          const hasFix = (t.samples || []).some((s) => isNum(s.lat));
+          if (geo.status === "denied") msg = "Location was denied, so this trip has no route or speed.";
+          else if (!hasFix) msg = "Waiting for a location fix. Outdoors is faster.";
+        }
+        note.hidden = !msg;
+        if (msg) note.textContent = msg;
+      },
+    };
+  }
+
+  function viewTripHistory() {
+    app.innerHTML = `<h1 class="page-title">Trips</h1><p class="subtitle">Scored drives saved on this phone.</p><div id="t-list"><p class="muted">Loading…</p></div>`;
+    DB.listTrips().then((list) => {
+      const el = $("#t-list"); if (!el) return;
+      if (!list.length) { el.innerHTML = `<div class="empty"><p>No trips yet.</p><a class="btn" href="#/trip">Start a trip</a></div>`; return; }
+      const unit = settings.units === "mph" ? "mph" : "kmh";
+      el.innerHTML = list.map((t) => {
+        const s = tripSummaryOf(t);
+        const when = new Date(t.start).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+        return `
+        <article class="card session" data-id="${esc(t.id)}">
+          <h2>${esc(when)}</h2>
+          <p class="small muted">${esc(duration((t.end || Date.now()) - t.start))} · ${esc(TripMath.formatDistance(s.distanceM, unit))} · score ${s.score == null ? "—" : s.score}${t.end ? "" : " · in progress"}</p>
+          <p class="small">${esc(s.explanation)}</p>
+          <div class="btn-row">
+            <a class="btn" href="#/trips/${esc(t.id)}">Open</a>
+            <button class="btn" data-act="csv">Export CSV</button>
+            <button class="btn" data-act="json">Export JSON</button>
+            <button class="btn btn-ghost" data-act="del">Delete</button>
+          </div>
+        </article>`;
+      }).join("");
+      el.querySelectorAll(".session").forEach((card) => {
+        const id = card.dataset.id;
+        const get = () => list.find((t) => t.id === id);
+        card.querySelector('[data-act="csv"]').onclick = () => { const t = get(); if (t) Recorder.download(`telematics-${id}.csv`, Trip.toCSV(t), "text/csv"); };
+        card.querySelector('[data-act="json"]').onclick = () => { const t = get(); if (t) Recorder.download(`telematics-${id}.json`, JSON.stringify(Trip.toJSON(t), null, 1), "application/json"); };
+        card.querySelector('[data-act="del"]').onclick = async () => {
+          if (!confirm("Delete this trip? This can't be undone.")) return;
+          await DB.deleteTrip(id);
+          toast("Deleted");
+          route();
+        };
+      });
+    }).catch((e) => { const el = $("#t-list"); if (el) el.innerHTML = `<p class="warn">Couldn't open saved trips: ${esc(e.message)}</p>`; });
+    return { name: "trips", draw() {}, text() {} };
+  }
+
+  function viewTripDetail(id) {
+    let trip = null;
+    app.innerHTML = `<a href="#/trips" class="back">← Trips</a><h1 class="page-title">Trip</h1><p class="muted">Loading…</p>`;
+    DB.getTrip(id).then((t) => {
+      if (!$("#app") || location.hash !== "#/trips/" + id) return;
+      if (!t) { app.innerHTML = `<a href="#/trips" class="back">← Trips</a><h1 class="page-title">Trip</h1><p class="warn">That trip is not on this phone.</p>`; return; }
+      trip = t;
+      const s = tripSummaryOf(t);
+      const unit = settings.units === "mph" ? "mph" : "kmh";
+      const when = new Date(t.start).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      app.innerHTML = `
+        <a href="#/trips" class="back">← Trips</a>
+        <h1 class="page-title">Trip</h1>
+        <p class="subtitle">${esc(when)}${t.end ? "" : " · in progress"}</p>
+        <section class="card">
+          <div class="big-stats"><div><div class="stat-num mono">${s.score == null ? "—" : s.score}</div><div class="stat-label">Score</div></div></div>
+          <p>${esc(s.explanation)}</p>
+          <dl class="meta">${tripMeta(s, unit)}</dl>
+          <div class="btn-row">
+            <button class="btn" id="td-csv">Export CSV</button>
+            <button class="btn" id="td-json">Export JSON</button>
+            <button class="btn btn-ghost" id="td-del">Delete</button>
+          </div>
+        </section>
+        <h2 class="section-title">Route</h2>
+        <canvas class="viz viz-big" id="td-route" role="img" aria-label="Route trace"></canvas>
+        <h2 class="section-title">Speed</h2>
+        <canvas class="viz viz-chart" id="td-speed" role="img" aria-label="Speed over time"></canvas>`;
+      $("#td-csv").onclick = () => Recorder.download(`telematics-${id}.csv`, Trip.toCSV(t), "text/csv");
+      $("#td-json").onclick = () => Recorder.download(`telematics-${id}.json`, JSON.stringify(Trip.toJSON(t), null, 1), "application/json");
+      $("#td-del").onclick = async () => {
+        if (!confirm("Delete this trip? This can't be undone.")) return;
+        await DB.deleteTrip(id);
+        toast("Deleted");
+        location.hash = "#/trips";
+      };
+      drawTripCharts(t.samples, "td-route", "td-speed");
+    }).catch((e) => { app.innerHTML = `<a href="#/trips" class="back">← Trips</a><p class="warn">${esc(e.message)}</p>`; });
+    return {
+      name: "trips",
+      draw() { if (trip) drawTripCharts(trip.samples, "td-route", "td-speed"); },
+      text() {},
+    };
   }
 
   // ---------- Update loop ----------
@@ -441,6 +701,11 @@
     const rt = $("#rec-tag"), r = Recorder.session;
     rt.hidden = !r;
     if (r) rt.textContent = "REC " + duration(Date.now() - r.start);
+    const tt = $("#trip-tag"), tr = Trip.active;
+    if (tt) {
+      tt.hidden = !tr;
+      if (tr) tt.textContent = "TRIP " + duration(Date.now() - tr.start);
+    }
   }
 
   // ---------- Start up ----------
@@ -448,6 +713,10 @@
   if (!location.hash) location.replace("#/sensors");
   route();
   requestAnimationFrame(loop);
+  // A trip left open by a refresh should keep logging.
+  Trip.resume().then((open) => {
+    if (open && view && view.name === "trip") route();
+  }).catch(() => {});
 
   // Offline support (needs https or localhost).
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {

@@ -9,7 +9,7 @@
 
 // Change this name (v1 -> v2 ...) whenever you change the app's files,
 // so phones throw away the old saved copy.
-const CACHE_NAME = "telematics-v2";
+const CACHE_NAME = "telematics-v3";
 
 const APP_FILES = [
   "./",
@@ -21,6 +21,8 @@ const APP_FILES = [
   "./js/sensors.js",
   "./js/charts.js",
   "./js/recorder.js",
+  "./js/trip-math.js",
+  "./js/trip.js",
   "./js/app.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
