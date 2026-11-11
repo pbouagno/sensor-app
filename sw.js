@@ -9,7 +9,7 @@
 
 // Change this name (v1 -> v2 ...) whenever you change the app's files,
 // so phones throw away the old saved copy.
-const CACHE_NAME = "telematics-v3";
+const CACHE_NAME = "telematics-v4";
 
 const APP_FILES = [
   "./",
@@ -24,10 +24,12 @@ const APP_FILES = [
   "./js/trip-math.js",
   "./js/trip.js",
   "./js/app.js",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png",
-  "./icons/favicon-32.png",
+  "./icons/icon-192.png?v=4",
+  "./icons/icon-512.png?v=4",
+  "./icons/icon-1024.png",
+  "./icons/icon.svg",
+  "./icons/apple-touch-icon.png?v=4",
+  "./icons/favicon-32.png?v=4",
   "./fonts/barlow-400.woff2",
   "./fonts/barlow-700.woff2",
   "./fonts/roboto-mono-400.woff2",
