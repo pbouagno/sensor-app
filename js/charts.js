@@ -1,7 +1,8 @@
 /*
   charts.js — every picture in the app, drawn by hand on <canvas>
-  (no chart library). All drawings are monochrome: different axes use
-  different line styles (solid, dashed, dotted) instead of colors.
+  (no chart library). A chart with two or more series draws them solid,
+  in the CSS variables --axis-x, --axis-y and --axis-z. A single series
+  stays white. Compass, attitude, trace, waveform and gauge stay white too.
 
   Charts.lines(canvas, stream, opts)   rolling multi-axis line chart
   Charts.compass(canvas, heading)      compass dial
@@ -14,14 +15,19 @@
   "use strict";
   const INK = "240,240,250"; // #F0F0FA as r,g,b
   const ink = (a) => `rgba(${INK},${a})`;
+  const WHITE = "#F0F0FA";
   const MONO = '"Roboto Mono", ui-monospace, monospace';
-  // Line styles for axis 0, 1, 2, 3...
-  const STYLES = [
-    { dash: [], alpha: 1, width: 1.6 },
-    { dash: [6, 4], alpha: 0.8, width: 1.4 },
-    { dash: [1.5, 3], alpha: 0.7, width: 1.8 },
-    { dash: [12, 3, 2, 3], alpha: 0.5, width: 1.3 },
-  ];
+  const AXIS_VARS = ["--axis-x", "--axis-y", "--axis-z"];
+  // Read once. The stylesheet is already applied by the time a chart draws.
+  let axisPalette = null;
+  function seriesColor(index, multi) {
+    if (!multi || index > 2) return WHITE;
+    if (!axisPalette) {
+      const cs = getComputedStyle(document.documentElement);
+      axisPalette = AXIS_VARS.map((name) => cs.getPropertyValue(name).trim() || WHITE);
+    }
+    return axisPalette[index] || WHITE;
+  }
 
   // Make the canvas sharp on high-DPI screens; returns a ready context.
   function setup(canvas) {
@@ -84,12 +90,13 @@
       ctx.textAlign = "right"; ctx.fillText("now", w - padR, h - 4);
     }
 
-    // One line per axis.
+    // One solid line per axis. Color follows the axis slot, not how many are visible.
+    const multi = (stream.def.chart || axes).length > 1;
     ctx.save();
     ctx.beginPath(); ctx.rect(padL, padT - 2, pw, ph + 4); ctx.clip();
     axes.forEach((a, k) => {
-      const st = STYLES[(opts.styleIdx ? opts.styleIdx[k] : k) % STYLES.length];
-      ctx.setLineDash(st.dash); ctx.lineWidth = st.width; ctx.strokeStyle = ink(st.alpha);
+      const slot = opts.styleIdx ? opts.styleIdx[k] : k;
+      ctx.setLineDash([]); ctx.lineWidth = 1.6; ctx.strokeStyle = seriesColor(slot, multi);
       ctx.lineJoin = "round"; ctx.beginPath();
       let pen = false, prev = null;
       // Angles like compass heading jump from 359° to 0°: don't draw that jump.
@@ -108,10 +115,10 @@
     ctx.setLineDash([]);
   }
 
-  // Small legend swatch (a short line in an axis's style) as an SVG string.
-  function swatch(k) {
-    const st = STYLES[k % STYLES.length];
-    return `<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="rgb(${INK})" stroke-opacity="${st.alpha}" stroke-width="${st.width}" stroke-dasharray="${st.dash.join(" ")}"/></svg>`;
+  // Small legend swatch. `multi` is false for a one-series chart, which stays white.
+  function swatch(k, multi) {
+    const color = seriesColor(k, multi !== false);
+    return `<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${color}" stroke-width="1.6"/></svg>`;
   }
 
   // Compass dial: the card rotates so the top always shows where you face.
@@ -281,5 +288,5 @@
     if (label) { ctx.fillStyle = ink(0.5); ctx.font = `10px ${MONO}`; ctx.fillText(label, cx, cy + 14); }
   }
 
-  window.Charts = { lines, swatch, compass, attitude, trace, wave, gauge, STYLES };
+  window.Charts = { lines, swatch, compass, attitude, trace, wave, gauge, seriesColor };
 })();

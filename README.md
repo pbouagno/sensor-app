@@ -42,7 +42,7 @@ Phones only allow sensors on a secure page: **https://** or localhost. Open **ht
 | `js/trip.js` | Logs a trip at about 1 Hz, stores it in IndexedDB, and holds the screen awake |
 | `js/db.js` | A small wrapper around IndexedDB (recordings and trips) |
 | `js/app.js` | The screens, the tabs and the update loop |
-| `sw.js` | The service worker that makes the app work offline. **Bump `CACHE_NAME` whenever you edit files** (it is `telematics-v4` now), or phones keep the old copy |
+| `sw.js` | The service worker that makes the app work offline. **Bump `CACHE_NAME` whenever you edit files** (it is `telematics-v5` now), or phones keep the old copy |
 | `tests/trip.test.js` | Checks haversine distance, harsh-event detection and the score |
 | `manifest.json` | The app name, icons and colors used when it's installed |
 | `fonts/`, `icons/`, `screenshots/` | Self-hosted fonts, home-screen icons, and reference screenshots |

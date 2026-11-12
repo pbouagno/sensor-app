@@ -50,6 +50,10 @@
   /* Added for this app */
   --tap: 44px;   /* smallest tap target (Apple guideline) */
   --accent: #F0F0FA; /* monochrome: the only "accent" is full white */
+  /* First three chart axes. Same hues as the app icon's electrons. */
+  --axis-x: #FF5A5F;
+  --axis-y: #3DDC84;
+  --axis-z: #4DA3FF;
 }
 @media (max-width: 1500px) { :root { --nav-px: 40px; } }
 @media (max-width: 961px)  { :root { --gutter: 20px; --fs-h2: 2.25rem; --fs-stat: 3rem; } }
@@ -146,6 +150,10 @@ p { margin: 0 0 8px; }
   transition: border-color var(--dur-hover) var(--ease-out-expo), color var(--dur-hover) var(--ease-out-expo);
 }
 .chip[aria-pressed="true"], .seg-btn[aria-pressed="true"] { border-color: var(--c-white-100); color: var(--c-white-100); }
+/* Axis names follow the series color. Numbers stay the default white. */
+.ax.axis-0, .chip.axis-0, .chip.axis-0[aria-pressed="true"], .stats-table tbody th.axis-0 { color: var(--axis-x); }
+.ax.axis-1, .chip.axis-1, .chip.axis-1[aria-pressed="true"], .stats-table tbody th.axis-1 { color: var(--axis-y); }
+.ax.axis-2, .chip.axis-2, .chip.axis-2[aria-pressed="true"], .stats-table tbody th.axis-2 { color: var(--axis-z); }
 .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin: 6px 0; }
 .seg { display: flex; gap: 6px; }
