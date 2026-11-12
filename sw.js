@@ -9,7 +9,7 @@
 
 // Change this name (v1 -> v2 ...) whenever you change the app's files,
 // so phones throw away the old saved copy.
-const CACHE_NAME = "telematics-v4";
+const CACHE_NAME = "telematics-v5";
 
 const APP_FILES = [
   "./",

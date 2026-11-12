@@ -82,14 +82,25 @@
     };
   }
 
+  // 0, 1, 2 for the first three series of a multi-axis chart. -1 leaves the label muted.
+  function axisSlot(def, axisIndex) {
+    if (!def.chart || def.chart.length < 2) return -1;
+    const k = def.chart.indexOf(axisIndex);
+    return k >= 0 && k < 3 ? k : -1;
+  }
   function valueRows(s, cls) {
     const d = s.def;
-    return d.axes.map((ax, i) => `
+    const multi = d.chart.length > 1;
+    return d.axes.map((ax, i) => {
+      const slot = axisSlot(d, i);
+      const sw = d.chart.includes(i) && d.viz !== "gauge" ? Charts.swatch(d.chart.indexOf(i), multi) : "";
+      return `
       <div class="val ${cls || ""}">
-        <span class="ax">${d.chart.includes(i) && d.viz !== "gauge" ? Charts.swatch(d.chart.indexOf(i)) : ""}${esc(ax)}</span>
+        <span class="ax${slot >= 0 ? " axis-" + slot : ""}">${sw}${esc(ax)}</span>
         <span class="v mono" data-ax="${i}">—</span>
         <span class="u">${esc(d.units[i] || "")}</span>
-      </div>`).join("");
+      </div>`;
+    }).join("");
   }
   function fillValues(root, s) {
     const v = s.last ? s.last.v : [];
@@ -246,7 +257,10 @@
       <p class="tile-msg small muted" data-f="msg">${esc(s.msg)}</p>
       ${special ? `<canvas class="viz viz-big viz-${d.viz}" id="d-special" aria-label="${esc(d.name)} picture" role="img"></canvas>` : ""}
       <canvas class="viz viz-chart" id="d-chart" role="img" aria-label="Line chart of recent ${esc(d.name)} readings"></canvas>
-      <div class="legend">${st.axes.map((a, k) => `<button class="chip" aria-pressed="true" data-axis="${a}">${Charts.swatch(k)}${esc(d.axes[a])}</button>`).join("")}</div>
+      <div class="legend">${st.axes.map((a) => {
+        const slot = axisSlot(d, a);
+        return `<button class="chip${slot >= 0 ? " axis-" + slot : ""}" aria-pressed="true" data-axis="${a}">${Charts.swatch(d.chart.indexOf(a), d.chart.length > 1)}${esc(d.axes[a])}</button>`;
+      }).join("")}</div>
       <div class="controls">
         <div class="seg" role="group" aria-label="Time window">
           ${[5, 10, 30, 60].map((w) => `<button class="seg-btn" data-w="${w}" aria-pressed="${w * 1000 === st.windowMs}">${w}s</button>`).join("")}
@@ -256,7 +270,10 @@
       <h2 class="section-title">Last <span id="w-label">${st.windowMs / 1000}</span> seconds</h2>
       <div class="table-wrap"><table class="stats-table">
         <thead><tr><th scope="col">Axis</th><th scope="col">Now</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mean</th><th scope="col">Unit</th></tr></thead>
-        <tbody>${d.axes.map((a, i) => `<tr><th scope="row">${esc(a)}</th><td data-s="${i}:last">—</td><td data-s="${i}:min">—</td><td data-s="${i}:max">—</td><td data-s="${i}:mean">—</td><td class="muted">${esc(d.units[i] || "")}</td></tr>`).join("")}</tbody>
+        <tbody>${d.axes.map((a, i) => {
+          const slot = axisSlot(d, i);
+          return `<tr><th scope="row"${slot >= 0 ? ` class="axis-${slot}"` : ""}>${esc(a)}</th><td data-s="${i}:last">—</td><td data-s="${i}:min">—</td><td data-s="${i}:max">—</td><td data-s="${i}:mean">—</td><td class="muted">${esc(d.units[i] || "")}</td></tr>`;
+        }).join("")}</tbody>
       </table></div>
       <dl class="meta" id="d-meta"></dl>`;
     app.querySelectorAll("[data-w]").forEach((b) => (b.onclick = () => {
